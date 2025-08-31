@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -16,10 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import com.lesson.memo.model.Memo;
+import com.lesson.memo.model.Priority;
 import com.lesson.memo.repository.MemoRepository;
-
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.Valid;
 
 @Controller
 @RequestMapping("/memo")
@@ -31,6 +32,21 @@ public class MemoController {
     @GetMapping
     public String list(Model model) {
         List<Memo> memos = memoRepository.findAll();
+        // 優先度順（HIGH→MEDIUM→LOW）＋作成日降順でソート
+        memos.sort((a, b) -> {
+            int pa = switch (a.getPriority()) {
+                case HIGH -> 0;
+                case MEDIUM -> 1;
+                case LOW -> 2;
+            };
+            int pb = switch (b.getPriority()) {
+                case HIGH -> 0;
+                case MEDIUM -> 1;
+                case LOW -> 2;
+            };
+            if (pa != pb) return Integer.compare(pa, pb);
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
         model.addAttribute("memos", memos);
         return "memo-list";
     }
@@ -38,6 +54,7 @@ public class MemoController {
     @GetMapping("/new")
     public String showForm(Model model) {
         model.addAttribute("memo", new Memo());
+        model.addAttribute("priorities", Priority.values()); // ★追加
         return "memo-form";
     }
 
@@ -64,18 +81,22 @@ public class MemoController {
         }
 
         model.addAttribute("memo", memo.get());
+        model.addAttribute("priorities", Priority.values()); // ★追加
+        
         return "memo-detail";
     }
 
     @GetMapping("/edit/{id}")
     public String showEditForm(@PathVariable Long id, Model model, HttpServletResponse response) {
         if (model.containsAttribute("memo")) {
+            model.addAttribute("priorities", Priority.values()); // ★追加
             return "memo-form";
         }
 
         return memoRepository.findById(id)
                 .map(memo -> {
                     model.addAttribute("memo", memo);
+                    model.addAttribute("priorities", Priority.values()); // ★追加
                     return "memo-form";
                 })
                 .orElseGet(() -> {
@@ -107,11 +128,13 @@ public class MemoController {
 
         memoToUpdate.setTitle(memo.getTitle());
         memoToUpdate.setContent(memo.getContent());
+        memoToUpdate.setPriority(memo.getPriority()); // ★追加
         memoToUpdate.setUpdatedAt(LocalDateTime.now());
         memoRepository.save(memoToUpdate);
 
         return "redirect:/memo/detail/" + id;
     }
+
 
     @GetMapping("/delete/{id}")
     public String delete(@PathVariable Long id,
